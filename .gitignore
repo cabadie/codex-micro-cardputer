@@ -1,0 +1,8 @@
+.DS_Store
+.venv/
+bridge/bin/
+bridge/config.json
+bridge/tools/models/*.bin
+bridge/node_modules/
+firmware/.pio/
+*.log

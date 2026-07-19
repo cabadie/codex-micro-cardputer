@@ -1,0 +1,26 @@
+{
+  "serialPath": null,
+  "httpPort": 8378,
+  "agentSource": "rolling",
+  "customThreads": [null, null, null, null, null, null],
+  "codexStateDb": null,
+  "codexSessionIndex": null,
+  "statePath": null,
+  "visibleTaskHelper": null,
+  "voice": {
+    "mode": "offline",
+    "whisperCommand": null,
+    "whisperModel": null
+  },
+  "sound": {
+    "mode": "hybrid",
+    "speechOutput": "mac",
+    "volume": 45,
+    "voice": "Samantha",
+    "speechRate": 280,
+    "answerMaxWords": 14
+  },
+  "actionShortcuts": {
+    "chat.continue": null
+  }
+}

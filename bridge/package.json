@@ -1,0 +1,24 @@
+{
+  "name": "codex-micro-cardputer-bridge",
+  "version": "0.6.0",
+  "private": true,
+  "description": "macOS bridge between Codex Desktop and Codex Micro for Cardputer",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cabadie/codex-micro-cardputer.git"
+  },
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/index.js",
+    "test": "node --test",
+    "build:ax": "mkdir -p bin && swiftc macos/CodexAX.swift -o bin/codex-ax",
+    "build:helpers": "mkdir -p bin && swiftc macos/CodexAX.swift -o bin/codex-ax && swiftc -parse-as-library macos/CodexVisibleTask.swift -o bin/codex-visible-task && swiftc macos/ClipboardWindow.swift -o bin/clipboard-window"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "serialport": "^12.0.0"
+  }
+}
