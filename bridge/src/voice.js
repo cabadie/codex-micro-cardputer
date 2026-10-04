@@ -53,6 +53,10 @@ function runTranscription(file, config) {
     let args;
     if (Array.isArray(config.whisperCommand) && config.whisperCommand.length) {
       [command, ...args] = config.whisperCommand.map((part) => String(part).replaceAll('{file}', file));
+      const modelIndex = args.findIndex(arg => arg === '-m' || arg === '--model');
+      if (modelIndex >= 0 && !fs.existsSync(args[modelIndex + 1] || '')) {
+        return reject(new Error('Whisper model missing; check voice configuration'));
+      }
     } else {
       command = resolveWhisper();
       if (!command) return reject(new Error('whisper-cli not found; install whisper-cpp or configure voice.whisperCommand'));
@@ -61,8 +65,9 @@ function runTranscription(file, config) {
       }
       args = ['-np', '-nt', '-m', config.whisperModel, '-f', file];
     }
-    execFile(command, args, { timeout: 90000 }, (error, stdout) => {
+    execFile(command, args, { timeout: 90000 }, (error, stdout, stderr) => {
       if (error) return reject(error);
+      if (/^error:/m.test(stderr || '')) return reject(new Error(String(stderr).split('\n').find(line => line.startsWith('error:'))));
       resolve(String(stdout).replace(/\s+/g, ' ').trim());
     });
   });

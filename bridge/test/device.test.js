@@ -50,3 +50,15 @@ test('USB takes priority and BLE remains the failover transport', () => {
   device.port = null;
   assert.equal(device.transport, 'ble');
 });
+
+test('audio acknowledgments stay on BLE when USB is also connected', () => {
+  const child = new FakeChild(); const writes = [];
+  child.stdin.on('data', bytes => writes.push(JSON.parse(bytes.toString())));
+  const device = new CardputerDevice({ bluetooth: { enabled: true } }, () => {});
+  device.bleProcess = child; device.bleConnected = true;
+  device.port = { isOpen: true, write() { assert.fail('BLE ACK went to USB'); } };
+  assert.equal(device.send({ t: 'ble.audio.ack', id: 7, seq: 0 }, 'ble'), true);
+  assert.equal(writes[0].seq, 0);
+  device.bleConnected = false;
+  assert.equal(device.send({ t: 'ble.audio.ack', id: 7, seq: 0 }, 'ble'), false);
+});

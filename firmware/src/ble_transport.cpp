@@ -203,10 +203,10 @@ bool bleTransportSendLine(const char* line) {
     const size_t length = strlen(line);
     size_t offset = 0;
     while (offset < length) {
-        // Twenty bytes fits the default ATT payload even before MTU negotiation.
-        // This makes reconnects reliable on Macs that restore the bond before
-        // increasing the negotiated MTU.
-        const size_t count = min((size_t)20, length - offset);
+        // Use the actual negotiated MTU, retaining the default 20-byte fallback.
+        const uint16_t mtu = server ? server->getPeerMTU(server->getConnId()) : 23;
+        const size_t payload = mtu > 23 ? min((size_t)180, (size_t)mtu - 3) : 20;
+        const size_t count = min(payload, length - offset);
         bridgeTx->setValue((uint8_t*)line + offset, count);
         bridgeTx->notify();
         offset += count;

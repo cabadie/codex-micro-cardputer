@@ -135,7 +135,7 @@ static void beginVoiceGesture(bool steer) {
         return;
     }
     if (!protocolVoiceSupported()) {
-        screenToast("voice needs USB");
+        screenToast("voice needs newer bridge");
         soundCue("error");
         suppressSpaceRelease = true;
         return;
@@ -235,6 +235,10 @@ void loop() {
     protocolLoop();
     soundLoop();
     voicePump();
+    if (!voiceActive()) {
+        voiceLatched = false;
+        pendingVoiceStop = false;
+    }
 
     uint32_t now = millis();
     if (pendingVoiceStop && now >= voiceStopDeadlineMs) {

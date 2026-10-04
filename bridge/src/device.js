@@ -153,13 +153,13 @@ class CardputerDevice extends EventEmitter {
     if (this.bleProcess) this.bleProcess.kill('SIGTERM');
   }
 
-  send(message) {
+  send(message, transport = this.transport) {
     const line = `${JSON.stringify({ v: 1, ...message })}\n`;
-    if (this.transport === 'usb') {
+    if (transport === 'usb' && this.port?.isOpen) {
       this.port.write(line);
       return true;
     }
-    if (this.transport === 'ble' && this.bleProcess?.stdin?.writable) {
+    if (transport === 'ble' && this.bleConnected && this.bleProcess?.stdin?.writable) {
       this.bleProcess.stdin.write(line);
       return true;
     }

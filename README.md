@@ -50,7 +50,8 @@ and related marks belong to their respective owners.
   connected, USB has priority; on battery, the deck, actions, shortcuts,
   battery level, and keyboard continue over the local BLE bridge link.
 - The top bar says `USB` or `BLE`, and `/status` reports the active transport.
-  Voice recording is intentionally USB-only in this first wireless release.
+  This experiment branch also supports short Bluetooth voice clips; see
+  [Bluetooth audio experiment](docs/ble-audio-experiment.md) for limits and testing.
 - Approve and Decline only press one exact, visible, enabled Codex request
   button. Ambiguous or absent UI fails closed.
 
@@ -230,7 +231,8 @@ To verify it, first confirm `/status` says `"transport":"usb"` and Bluetooth
 status is `connected`, then unplug the
 Cardputer. Within a few seconds the top bar and `/status` should say `BLE`.
 Typing, task tiles, tile selection, Codex actions, and Custom prompt shortcuts
-should continue. Plug USB back in to restore full voice support. If discovery
+should continue. Bluetooth voice on this experiment branch is limited to 10-second
+clips transferred after release. Plug USB back in for longer recordings. If discovery
 gets stale after flashing, restart the bridge; there is no Bluetooth device to
 forget in System Settings.
 

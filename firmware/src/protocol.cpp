@@ -7,6 +7,7 @@
 
 #include "app_types.h"
 #include "ble_transport.h"
+#include "ble_audio.h"
 #include "hid_out.h"
 #include "screen.h"
 #include "sound.h"
@@ -20,6 +21,7 @@ static size_t bleInputLength = 0;
 static unsigned char audioBase64[5500];
 static unsigned char speechDecoded[2200];
 static bool speechTransferAccepted = false;
+static bool bleAudioSupported = false;
 
 static ChatState parseState(const char* value) {
     if (!value) return CHAT_UNASSIGNED;
@@ -70,8 +72,15 @@ static void handleMessage(char* line, ProtocolTransport transport) {
     g_ui.bridgeConnected = true;
     const char* type = document["t"];
     if (!type) return;
+    if (!strcmp(type, "hello") || !strcmp(type, "connection")) {
+        bleAudioSupported = document["bleAudio"] | false;
+    }
 
-    if (!strcmp(type, "hello") || !strcmp(type, "ping")) {
+    if (!strcmp(type, "ble.audio.ack")) {
+        bleAudioAck(document["id"] | 0u, document["seq"] | -99);
+    } else if (!strcmp(type, "ble.audio.test")) {
+        if (g_ui.voice == VOICE_IDLE && bleAudioSupported) bleAudioBegin(false, true);
+    } else if (!strcmp(type, "hello") || !strcmp(type, "ping")) {
         g_ui.codexConnected = true;
     } else if (!strcmp(type, "connection")) {
         g_ui.bridgeConnected = document["bridge"] | g_ui.bridgeConnected;
@@ -183,7 +192,7 @@ bool protocolUsingBle() {
 }
 
 bool protocolVoiceSupported() {
-    return protocolConnected() && activeTransport() == TRANSPORT_USB;
+    return protocolConnected() && (activeTransport() == TRANSPORT_USB || bleAudioSupported);
 }
 
 const char* protocolTransportName() { return protocolUsingBle() ? "BLE" : "USB"; }

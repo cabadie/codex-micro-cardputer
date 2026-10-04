@@ -8,6 +8,7 @@ class SpeakerFeedback {
     this.log = log;
     this.speechQueue = Promise.resolve();
     this.generation = 0;
+    this.suspended = false;
   }
 
   cancel() {
@@ -24,11 +25,13 @@ class SpeakerFeedback {
   }
 
   tone(cue = 'confirm', toast = '') {
+    if (this.suspended) return;
     if (toast) this.device.send({ t: 'toast', msg: toast.slice(0, 40) });
     if (this.getSettings().mode !== 'mute') this.device.send({ t: 'cue', id: cue });
   }
 
   async speak(text, { toast = text, cue = 'confirm', cache = true } = {}) {
+    if (this.suspended) return false;
     const settings = this.getSettings();
     const generation = this.generation;
     if (toast) this.device.send({ t: 'toast', msg: String(toast).slice(0, 40) });

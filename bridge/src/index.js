@@ -21,6 +21,7 @@ const { MacSpeechSynthesizer } = require('./speech');
 const { pastePromptShortcut } = require('./shortcut-delivery');
 const { tilesPage } = require('./tiles-ui');
 const { VoiceSession } = require('./voice');
+const { BleAudioReceiver } = require('./ble-audio');
 const { pinVoiceTarget } = require('./voice-target');
 
 const config = loadConfig(process.env.CARDPUTER_CONFIG);
@@ -34,6 +35,10 @@ function log(message, ...args) {
 }
 
 const device = new CardputerDevice(config, log);
+const bleAudio = new BleAudioReceiver(message => device.send(message, 'ble'));
+let voiceInProgress = false;
+let voiceStartedAt = 0;
+let voiceSource = null;
 const actions = new ActionDispatcher(config, macos, device);
 const synthesizer = new MacSpeechSynthesizer(deckState.sound, log);
 const feedback = new SpeakerFeedback(device, synthesizer, () => deckState.sound, log);
@@ -379,12 +384,43 @@ async function sendTranscript(delivery = voiceDelivery, targetThreadId = voiceTa
   voiceTargetThreadId = null;
   voiceTargetTitle = '';
   voiceTargetPromise = null;
+  feedback.suspended = false;
   if (delivery === 'steer') await feedback.speak('Steered', { toast: 'voice steered', cue: 'steer' });
   else await feedback.speak('Sent', { toast: 'voice sent' });
 }
 
-async function handleMessage(message) {
+async function handleMessage(message, transport) {
   if (!message || typeof message !== 'object') return;
+  if (message.t?.startsWith('ble.audio.')) {
+    if (transport !== 'ble') return;
+    try {
+      if (message.t === 'ble.audio.begin' && voiceInProgress && bleAudio.session?.id !== message.id) throw new Error('Voice is already busy');
+      const event = bleAudio.accept(message);
+      if (!event) return;
+      if (event.type === 'start') {
+        feedback.cancel(); feedback.suspended = true;
+        log(`Bluetooth audio started: ${message.id}${event.test ? ' (transport test)' : ''}`);
+        if (!event.test) await handleMessage({ t: 'audio.start', rate: 16000, delivery: event.delivery }, 'ble');
+      } else if (event.type === 'complete') {
+        voice.append(event.pcm.toString('base64'));
+        log(`Bluetooth audio received: ${JSON.stringify(bleAudio.last)}`);
+        await handleMessage({ t: 'audio.end' }, 'ble');
+      } else if (event.type === 'test') {
+        feedback.suspended = false;
+        log(`Bluetooth audio test passed: ${JSON.stringify(bleAudio.last)}`);
+        device.send({ t: 'voice.state', state: 'idle' });
+        device.send({ t: 'toast', msg: 'BLE audio link test passed' });
+      } else if (event.type === 'abort') {
+        feedback.suspended = false;
+        if (!event.test) { voice.discard(); voiceInProgress = false; }
+        device.send({ t: 'voice.state', state: 'error', msg: 'Bluetooth audio cancelled' });
+      }
+    } catch (error) {
+      log(`Bluetooth audio error: ${error.message}`);
+      device.send({ t: 'voice.state', state: 'error', msg: error.message });
+    }
+    return;
+  }
 
   if (message.t === 'hid.report') {
     const report = decodeHidReport(message);
@@ -403,6 +439,7 @@ async function handleMessage(message) {
       t: 'hello',
       protocol: 1,
       bridge: '0.7.0',
+      bleAudio: true,
       capabilities: [
         'chats',
         'actions',
@@ -425,6 +462,11 @@ async function handleMessage(message) {
     return;
   }
   if (message.t === 'audio.start') {
+    if (voiceInProgress) return;
+    voiceInProgress = true;
+    voiceStartedAt = Date.now();
+    voiceSource = transport;
+    feedback.suspended = true;
     feedback.cancel();
     voice.start(Number(message.rate || 16000));
     voiceDelivery = message.delivery === 'steer' ? 'steer' : 'queue';
@@ -458,6 +500,9 @@ async function handleMessage(message) {
       if (!voice.peekTranscript()) voice.discard();
       device.send({ t: 'voice.state', state: 'error', msg: error.message });
       device.send({ t: 'cue', id: 'error' });
+    } finally {
+      voiceInProgress = false;
+      feedback.suspended = false;
     }
     return;
   }
@@ -471,6 +516,8 @@ async function handleMessage(message) {
     }
     else if (message.id === 'voice.send') await sendTranscript();
     else if (message.id === 'voice.discard') {
+      voiceInProgress = false;
+      feedback.suspended = false;
       voice.discard();
       voiceTargetThreadId = null;
       voiceTargetTitle = '';
@@ -492,10 +539,10 @@ async function handleMessage(message) {
   }
 }
 
-device.on('message', (message) => handleMessage(message));
+device.on('message', (message, transport) => handleMessage(message, transport).catch(error => log(`message handler: ${error.message}`)));
 device.on('connected', () => {
   feedback.syncSettings();
-  device.send({ t: 'connection', bridge: true, codex: true, transport: device.transport });
+  device.send({ t: 'connection', bridge: true, codex: true, transport: device.transport, bleAudio: true });
   // A bridge restart abandons any in-flight recording. Explicitly clear a
   // previous error/preview so the Cardputer never remains stuck on stale voice
   // state after the underlying problem has been fixed.
@@ -506,7 +553,11 @@ device.on('connected', () => {
 });
 device.on('transport', (transport, previous) => {
   if (!previous || !transport) return;
-  device.send({ t: 'connection', bridge: true, codex: true, transport });
+  if (previous === 'usb' && transport !== 'usb' && voiceInProgress && voiceSource === 'usb' && voice.chunks !== null) {
+    voice.discard(); voiceInProgress = false; feedback.suspended = false;
+    device.send({ t: 'voice.state', state: 'error', msg: 'USB disconnected during voice' });
+  }
+  device.send({ t: 'connection', bridge: true, codex: true, transport, bleAudio: true });
   refreshSlots(true);
   syncPromptShortcuts();
 });
@@ -516,7 +567,18 @@ device.on('error', (error) => log(`device error: ${error.message}`));
 device.start();
 
 const refreshTimer = setInterval(() => refreshSlots(), 750);
-const pingTimer = setInterval(() => device.send({ t: 'ping' }), 3000);
+const pingTimer = setInterval(() => {
+  device.send({ t: 'ping' });
+  const timeout = bleAudio.expire();
+  const usbTimeout = voiceInProgress && voiceSource === 'usb' && voice.chunks !== null && Date.now() - voiceStartedAt > 100000;
+  if (timeout || usbTimeout) {
+    feedback.suspended = false;
+    voice.discard(); voiceInProgress = false;
+    const error = timeout?.error || 'USB recording timed out';
+    log(error);
+    device.send({ t: 'voice.state', state: 'error', msg: error });
+  }
+}, 3000);
 refreshSlots();
 
 const server = http.createServer(async (request, response) => {
@@ -528,6 +590,7 @@ const server = http.createServer(async (request, response) => {
         device: device.connected,
         transport: device.transport,
         bluetooth: { status: device.bleStatus, connected: device.bleConnected },
+        bleAudio: bleAudio.last,
         agentSource: config.agentSource,
         selectedThreadId,
         taskAliasCount: Object.keys(deckState.taskAliases).length,
@@ -573,6 +636,13 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === 'GET' && pathname === '/api/sound') {
       writeJson(response, 200, { sound: deckState.sound });
+      return;
+    }
+    if (request.method === 'POST' && pathname === '/api/voice/ble-test') {
+      requireTileUiRequest(request);
+      if (voiceInProgress || bleAudio.busy) throw new Error('Voice is busy');
+      if (!device.send({ t: 'ble.audio.test' }, 'ble')) throw new Error('Bluetooth is disconnected');
+      writeJson(response, 200, { ok: true, message: 'Started audio transport test; no prompt will be submitted' });
       return;
     }
     if (request.method === 'POST' && pathname === '/api/sound') {

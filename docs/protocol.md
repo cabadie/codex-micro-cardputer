@@ -64,9 +64,12 @@ and submit the text. It does not open or retarget a recent-task tile.
 
 The device declares the bridge offline after eight seconds without a received
 message. The bridge pings every three seconds, retries USB serial every two
-seconds, and keeps its native CoreBluetooth helper scanning/reconnecting. Audio
-messages remain USB-only in v0.7; the firmware rejects voice capture while BLE
-is the active transport instead of risking a partial or delayed submission.
+seconds, and keeps its native CoreBluetooth helper scanning/reconnecting. The
+baseline v0.7 audio messages remain USB-only. The experiment branch adds
+`ble.audio.begin`, `ble.audio.data`, `ble.audio.end`, and `ble.audio.abort`,
+with explicit `ble.audio.ack` replies. See [the experiment notes](ble-audio-experiment.md)
+for compression, retry limits, and the diagnostic endpoint. Hello and connection
+messages advertise `bleAudio: true` to enable this path.
 
 ## Safety rules
 
