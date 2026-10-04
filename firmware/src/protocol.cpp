@@ -98,14 +98,10 @@ static void handleMessage(char* line, ProtocolTransport transport) {
             const char* reasoning = document["reasoning"] | "";
             strncpy(chat.reasoning, reasoning, sizeof(chat.reasoning) - 1);
             chat.reasoning[sizeof(chat.reasoning) - 1] = 0;
-            ChatState previous = chat.state;
             chat.state = parseState(document["state"] | "unassigned");
             chat.selected = document["selected"] | false;
-            if (previous != CHAT_UNASSIGNED && previous != chat.state && g_ui.voice == VOICE_IDLE) {
-                if (chat.state == CHAT_COMPLETE) soundCue("complete");
-                if (chat.state == CHAT_REQUIRES_INPUT) soundCue("input");
-                if (chat.state == CHAT_ERROR) soundCue("error");
-            }
+            // Background task updates are visual only. Rolling tiles can also
+            // change identity, so a slot transition must never sound an alert.
             screenDirty();
         }
     } else if (!strcmp(type, "prompt.shortcuts")) {

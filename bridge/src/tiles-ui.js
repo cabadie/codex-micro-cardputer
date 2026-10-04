@@ -93,7 +93,7 @@ function tilesPage() {
   </details>
 
   <h2>Speaker feedback</h2>
-  <p class="help">Hybrid mode speaks direct confirmations and the summarized last answer while keeping background task events as short Cardputer tones. Choose Mac for clearer speech, Cardputer for portable speech, or Both. The volume slider controls only the Cardputer; Mac speech follows the Mac system volume. In the Codex Micro layer, press <strong>S</strong> to hear the latest completed answer for the selected tile.</p>
+  <p class="help">Hybrid mode speaks direct confirmations and the summarized last answer. Background task updates are silent. Choose Mac for clearer speech, Cardputer for portable speech, or Both. The volume slider controls only the Cardputer; Mac speech follows the Mac system volume. In the Codex Micro layer, press <strong>S</strong> to hear the latest completed answer for the selected tile.</p>
   <section class="panel">
     <form id="sound-form">
       <div class="form-grid">
