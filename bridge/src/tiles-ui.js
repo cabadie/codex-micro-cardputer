@@ -24,6 +24,20 @@ function tilesPage() {
     .deck-actions, .alias-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     .alias-controls input { flex: 1 1 220px; }
     .alias-card.on-deck { border-color: #745cff; }
+    .naming-section { margin-top: 34px; border: 1px solid #293043; border-radius: 14px; background: #10151f; }
+    .naming-section summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border: 0; background: transparent; cursor: pointer; list-style: none; }
+    .naming-section summary::-webkit-details-marker { display: none; }
+    .summary-title { font-size: 21px; font-weight: 700; }
+    .summary-meta { color: #aeb6c8; font-size: 13px; font-weight: 500; text-align: right; }
+    .summary-action::after { content: 'Expand'; color: #a99cff; font-weight: 700; margin-left: 8px; }
+    .naming-section[open] .summary-action::after { content: 'Collapse'; }
+    .naming-body { padding: 0 14px 14px; }
+    .naming-body .help { margin-bottom: 12px; }
+    .naming-body .panel { padding: 12px; }
+    .naming-body .alias-list { max-height: 430px; overflow-y: auto; padding-right: 4px; }
+    .naming-body .alias-card { padding: 10px 12px; border-radius: 10px; }
+    .naming-body .alias-card .head { margin-bottom: 4px; }
+    .naming-body .alias-controls { margin-top: 7px; }
     .alias-title { overflow-wrap: anywhere; }
     .library-tools { display: flex; gap: 8px; margin: 12px 0; }
     .library-tools input { width: 100%; }
@@ -67,12 +81,16 @@ function tilesPage() {
   <section id="tiles" class="grid" aria-live="polite"></section>
   <div class="deck-actions"><button id="new-task" class="primary" type="button">New Codex task</button></div>
 
-  <h2>Task short names</h2>
-  <p class="help">Give any task a short Cardputer-only name. The alias follows that task by its ID and is remembered even after the task moves beyond the five visible tiles. The real Codex title is never changed.</p>
-  <section class="panel">
-    <div class="library-tools"><input id="task-search" type="search" placeholder="Search recent tasks or short names…" aria-label="Search task short names"></div>
-    <div id="alias-list" class="alias-list" aria-live="polite"></div>
-  </section>
+  <details id="task-names" class="naming-section">
+    <summary><span class="summary-title">Task short names</span><span class="summary-meta"><span id="alias-summary">Loading…</span><span class="summary-action" aria-hidden="true"></span></span></summary>
+    <div class="naming-body">
+      <p class="help">Give any task a short Cardputer-only name. The alias follows that task by its ID and is remembered even after the task moves beyond the five visible tiles. The real Codex title is never changed.</p>
+      <section class="panel">
+        <div class="library-tools"><input id="task-search" type="search" placeholder="Search recent tasks or short names…" aria-label="Search task short names"></div>
+        <div id="alias-list" class="alias-list" aria-live="polite"></div>
+      </section>
+    </div>
+  </details>
 
   <h2>Speaker feedback</h2>
   <p class="help">Hybrid mode speaks direct confirmations and the summarized last answer while keeping background task events as short Cardputer tones. Choose Mac for clearer speech, Cardputer for portable speech, or Both. The volume slider controls only the Cardputer; Mac speech follows the Mac system volume. In the Codex Micro layer, press <strong>S</strong> to hear the latest completed answer for the selected tile.</p>
@@ -226,6 +244,8 @@ function renderTiles(status, catalog) {
 function renderAliases(status, catalog) {
   const root = document.querySelector('#alias-list');
   const search = document.querySelector('#task-search');
+  const namedCount = catalog.threads.filter(thread => Boolean(thread.alias)).length;
+  document.querySelector('#alias-summary').textContent = catalog.threads.length + ' tasks · ' + namedCount + ' named';
   const query = search.value.trim().toLowerCase();
   const slotByThread = new Map(status.slots.filter(slot => slot.threadId).map(slot => [slot.threadId, slot.slot]));
   root.replaceChildren();

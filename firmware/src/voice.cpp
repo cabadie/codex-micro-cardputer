@@ -9,11 +9,14 @@
 
 static constexpr size_t CHUNK_SAMPLES = 2048;
 static constexpr uint32_t SAMPLE_RATE = 16000;
+static constexpr uint32_t MAX_RECORDING_MS = 90000;
+static constexpr uint32_t DRAIN_TIMEOUT_MS = 750;
 
 static int16_t buffers[2][CHUNK_SAMPLES];
 static bool active = false;
 static uint8_t head = 0;
 static uint8_t pending = 0;
+static uint32_t startedAtMs = 0;
 
 void voiceBegin() {}
 
@@ -30,6 +33,7 @@ bool voiceStart(bool steer) {
         return false;
     }
     active = true;
+    startedAtMs = millis();
     head = 0;
     M5Cardputer.Mic.record(buffers[0], CHUNK_SAMPLES, SAMPLE_RATE);
     M5Cardputer.Mic.record(buffers[1], CHUNK_SAMPLES, SAMPLE_RATE);
@@ -44,6 +48,11 @@ bool voiceStart(bool steer) {
 
 void voicePump() {
     if (!active) return;
+    if (millis() - startedAtMs >= MAX_RECORDING_MS) {
+        screenToast("voice auto-stop");
+        voiceStop();
+        return;
+    }
     while (pending > M5Cardputer.Mic.isRecording()) {
         protocolAudioChunk((const unsigned char*)buffers[head], CHUNK_SAMPLES * sizeof(int16_t));
         M5Cardputer.Mic.record(buffers[head], CHUNK_SAMPLES, SAMPLE_RATE);
@@ -54,7 +63,8 @@ void voicePump() {
 void voiceStop() {
     if (!active) return;
     active = false;
-    while (pending > 0) {
+    const uint32_t drainDeadline = millis() + DRAIN_TIMEOUT_MS;
+    while (pending > 0 && (int32_t)(drainDeadline - millis()) > 0) {
         uint8_t inFlight = M5Cardputer.Mic.isRecording();
         while (pending > inFlight) {
             protocolAudioChunk((const unsigned char*)buffers[head], CHUNK_SAMPLES * sizeof(int16_t));
@@ -64,6 +74,7 @@ void voiceStop() {
         delay(1);
     }
     M5Cardputer.Mic.end();
+    pending = 0;
     M5Cardputer.Speaker.begin();
     soundBegin();
     soundCue("record.stop");

@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "app_types.h"
+#include "ble_transport.h"
 #include "hid_out.h"
 #include "protocol.h"
 #include "screen.h"
@@ -133,6 +134,12 @@ static void beginVoiceGesture(bool steer) {
         suppressSpaceRelease = true;
         return;
     }
+    if (!protocolVoiceSupported()) {
+        screenToast("voice needs USB");
+        soundCue("error");
+        suppressSpaceRelease = true;
+        return;
+    }
     if (voiceLatched) {
         voiceLatched = false;
         pendingVoiceStop = false;
@@ -207,15 +214,24 @@ void setup() {
     M5Cardputer.Display.setBrightness(72);
     initializeModel();
     hidBegin();
+    screenBegin();
+    screenToast("starting wireless");
+    const bool bluetoothReady = bleTransportBegin();
     soundBegin();
     protocolBegin();
     voiceBegin();
-    screenBegin();
-    screenToast("Codex Micro ready");
+    if (bluetoothReady) {
+        screenToast("Codex Micro ready");
+    } else {
+        char message[32];
+        snprintf(message, sizeof(message), "BLE recovery stage %u", bleTransportRecoveredStage());
+        screenToast(message);
+    }
 }
 
 void loop() {
     M5Cardputer.update();
+    bleTransportLoop();
     protocolLoop();
     soundLoop();
     voicePump();
@@ -232,7 +248,19 @@ void loop() {
     if (now - lastBatteryMs > 5000) {
         lastBatteryMs = now;
         g_ui.battery = M5Cardputer.Power.getBatteryLevel();
+        if (g_ui.battery >= 0) bleTransportSetBattery((uint8_t)g_ui.battery);
         screenDirty();
+    }
+
+    // The keyboard library can occasionally miss the change edge when the mic
+    // and USB transport are busy. Poll the live Space state while recording so
+    // release-to-send cannot remain stuck in Listening.
+    if (voiceActive() && previousSpace && !voiceLatched) {
+        auto liveState = M5Cardputer.Keyboard.keysState();
+        if (!liveState.space) {
+            endVoiceGesture();
+            previousSpace = false;
+        }
     }
 
     if (M5Cardputer.Keyboard.isChange()) {

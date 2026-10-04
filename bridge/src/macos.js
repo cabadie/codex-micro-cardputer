@@ -12,6 +12,10 @@ const KEY_CODES = {
   escape: 53,
   tab: 48,
   backspace: 51,
+  left: 123,
+  right: 124,
+  down: 125,
+  up: 126,
 };
 
 const SHORTCUT_SCRIPT = `

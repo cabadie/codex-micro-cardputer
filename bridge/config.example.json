@@ -7,6 +7,10 @@
   "codexSessionIndex": null,
   "statePath": null,
   "visibleTaskHelper": null,
+  "bluetooth": {
+    "enabled": true,
+    "helper": null
+  },
   "voice": {
     "mode": "offline",
     "whisperCommand": null,

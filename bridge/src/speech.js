@@ -101,19 +101,23 @@ class MacSpeechSynthesizer {
   }
 }
 
-function sendWavToDevice(device, wav) {
+function sendWavToDevice(device, wav, { cancelled = () => false } = {}) {
   if (!validWav(wav)) throw new Error('Cannot send invalid speech audio');
   if (wav.length > MAX_SPEECH_BYTES) throw new Error('Speech audio exceeds the Cardputer buffer');
+  if (cancelled()) return false;
   if (!device.send({ t: 'speech.begin', bytes: wav.length, format: 'wav' })) {
     throw new Error('Cardputer disconnected before speech playback');
   }
   for (let offset = 0; offset < wav.length; offset += SPEECH_CHUNK_BYTES) {
+    if (cancelled()) return false;
     const data = wav.subarray(offset, Math.min(offset + SPEECH_CHUNK_BYTES, wav.length));
     if (!device.send({ t: 'speech.chunk', data: data.toString('base64') })) {
       throw new Error('Cardputer disconnected during speech playback');
     }
   }
+  if (cancelled()) return false;
   if (!device.send({ t: 'speech.end' })) throw new Error('Cardputer disconnected before speech playback');
+  return true;
 }
 
 module.exports = {

@@ -7,6 +7,14 @@ class SpeakerFeedback {
     this.getSettings = getSettings;
     this.log = log;
     this.speechQueue = Promise.resolve();
+    this.generation = 0;
+  }
+
+  cancel() {
+    // Voice recording has priority over optional spoken feedback. Invalidating
+    // both queued and currently synthesizing jobs prevents their WAV chunks
+    // from competing with microphone audio on the serial connection.
+    this.generation += 1;
   }
 
   syncSettings() {
@@ -22,19 +30,23 @@ class SpeakerFeedback {
 
   async speak(text, { toast = text, cue = 'confirm', cache = true } = {}) {
     const settings = this.getSettings();
+    const generation = this.generation;
     if (toast) this.device.send({ t: 'toast', msg: String(toast).slice(0, 40) });
     if (settings.mode === 'mute') return false;
     this.device.send({ t: 'cue', id: cue });
     if (settings.mode !== 'hybrid') return false;
     const job = async () => {
       try {
+        if (generation !== this.generation) return false;
         const output = settings.speechOutput || 'cardputer';
         const jobs = [];
         if (output === 'mac' || output === 'both') {
           jobs.push(this.synthesizer.speak(text));
         }
         if (output === 'cardputer' || output === 'both') {
-          jobs.push(this.synthesizer.synthesize(text, { cache }).then((wav) => sendWavToDevice(this.device, wav)));
+          jobs.push(this.synthesizer.synthesize(text, { cache }).then((wav) => sendWavToDevice(this.device, wav, {
+            cancelled: () => generation !== this.generation,
+          })));
         }
         await Promise.all(jobs);
         return true;

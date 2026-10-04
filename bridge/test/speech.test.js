@@ -36,3 +36,19 @@ test('rejects invalid speech audio', () => {
   assert.equal(validWav(Buffer.from('not audio')), false);
   assert.throws(() => sendWavToDevice({ send: () => true }, Buffer.from('bad')), /invalid/);
 });
+
+test('stops a speech transfer when voice recording cancels feedback', () => {
+  const messages = [];
+  let chunks = 0;
+  const device = {
+    send: (message) => {
+      messages.push(message);
+      if (message.t === 'speech.chunk') chunks += 1;
+      return true;
+    },
+  };
+  const sent = sendWavToDevice(device, wav(5000), { cancelled: () => chunks >= 1 });
+  assert.equal(sent, false);
+  assert.equal(messages.filter((message) => message.t === 'speech.chunk').length, 1);
+  assert.equal(messages.some((message) => message.t === 'speech.end'), false);
+});

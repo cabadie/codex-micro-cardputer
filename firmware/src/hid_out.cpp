@@ -4,7 +4,27 @@
 #include <USB.h>
 #include <string.h>
 
+#include "ble_transport.h"
+#include "protocol.h"
+
 static USBHIDKeyboard keyboard;
+
+static bool useBle() { return protocolUsingBle() && bleHidConnected(); }
+
+static void press(uint8_t key) {
+    if (useBle()) bleHidPress(key);
+    else keyboard.press(key);
+}
+
+static void releaseAll() {
+    if (useBle()) bleHidReleaseAll();
+    else keyboard.releaseAll();
+}
+
+static void write(uint8_t value) {
+    if (useBle()) bleHidWrite(value);
+    else keyboard.write(value);
+}
 
 void hidBegin() {
     keyboard.begin();
@@ -12,49 +32,49 @@ void hidBegin() {
 }
 
 void hidTap(uint8_t key) {
-    keyboard.press(key);
+    press(key);
     delay(8);
-    keyboard.releaseAll();
+    releaseAll();
 }
 
 void hidTapMod(uint8_t key, uint8_t modifier1, uint8_t modifier2) {
-    if (modifier1) keyboard.press(modifier1);
-    if (modifier2) keyboard.press(modifier2);
+    if (modifier1) press(modifier1);
+    if (modifier2) press(modifier2);
     delay(4);
-    keyboard.press(key);
+    press(key);
     delay(8);
-    keyboard.releaseAll();
+    releaseAll();
 }
 
-void hidChar(char value) { keyboard.write((uint8_t)value); }
+void hidChar(char value) { write((uint8_t)value); }
 
 void hidText(const char* text) {
     while (*text) {
-        keyboard.write((uint8_t)*text++);
+        write((uint8_t)*text++);
         delay(5);
     }
 }
 
 void hidPassChar(char value, bool control, bool option, bool command) {
     if (!(control || option || command)) {
-        keyboard.write((uint8_t)value);
+        write((uint8_t)value);
         return;
     }
-    if (control) keyboard.press(KEY_LEFT_CTRL);
-    if (option) keyboard.press(KEY_LEFT_ALT);
-    if (command) keyboard.press(KEY_LEFT_GUI);
+    if (control) press(KEY_LEFT_CTRL);
+    if (option) press(KEY_LEFT_ALT);
+    if (command) press(KEY_LEFT_GUI);
     delay(4);
-    keyboard.write((uint8_t)value);
+    write((uint8_t)value);
     delay(4);
-    keyboard.releaseAll();
+    releaseAll();
 }
 
 void hidShortcut(const char* key, bool command, bool shift, bool option, bool control) {
     if (!key || !key[0]) return;
-    if (command) keyboard.press(KEY_LEFT_GUI);
-    if (shift) keyboard.press(KEY_LEFT_SHIFT);
-    if (option) keyboard.press(KEY_LEFT_ALT);
-    if (control) keyboard.press(KEY_LEFT_CTRL);
+    if (command) press(KEY_LEFT_GUI);
+    if (shift) press(KEY_LEFT_SHIFT);
+    if (option) press(KEY_LEFT_ALT);
+    if (control) press(KEY_LEFT_CTRL);
     delay(4);
 
     uint8_t code = 0;
@@ -69,8 +89,8 @@ void hidShortcut(const char* key, bool command, bool shift, bool option, bool co
     else if (!key[1]) code = (uint8_t)key[0];
 
     if (code) {
-        keyboard.press(code);
+        press(code);
         delay(8);
     }
-    keyboard.releaseAll();
+    releaseAll();
 }

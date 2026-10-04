@@ -6,13 +6,17 @@
 #include <string.h>
 
 #include "app_types.h"
+#include "ble_transport.h"
 #include "hid_out.h"
 #include "screen.h"
 #include "sound.h"
 
-static uint32_t lastReceiveMs = 0;
-static char inputBuffer[8192];
-static size_t inputLength = 0;
+static uint32_t lastSerialReceiveMs = 0;
+static uint32_t lastBleReceiveMs = 0;
+static char serialInputBuffer[8192];
+static size_t serialInputLength = 0;
+static char bleInputBuffer[8192];
+static size_t bleInputLength = 0;
 static unsigned char audioBase64[5500];
 static unsigned char speechDecoded[2200];
 static bool speechTransferAccepted = false;
@@ -35,10 +39,34 @@ static VoiceUiState parseVoiceState(const char* value) {
     return VOICE_ERROR;
 }
 
-static void handleMessage(char* line) {
+enum ProtocolTransport : uint8_t { TRANSPORT_USB, TRANSPORT_BLE };
+static ProtocolTransport lastReceivedTransport = TRANSPORT_USB;
+
+static bool recently(uint32_t value) {
+    return value && millis() - value < 8000;
+}
+
+static ProtocolTransport activeTransport() {
+    // The bridge only writes to its chosen transport. Remembering the source of
+    // the latest valid message makes failover immediate instead of waiting for
+    // the old transport's heartbeat timeout.
+    if (lastReceivedTransport == TRANSPORT_BLE && recently(lastBleReceiveMs)) return TRANSPORT_BLE;
+    if (lastReceivedTransport == TRANSPORT_USB && recently(lastSerialReceiveMs)) return TRANSPORT_USB;
+    return recently(lastSerialReceiveMs) ? TRANSPORT_USB : TRANSPORT_BLE;
+}
+
+static void sendLine(const char* line) {
+    if (!line) return;
+    if (activeTransport() == TRANSPORT_USB || !bleTransportConnected()) Serial.println(line);
+    else bleTransportSendLine(line);
+}
+
+static void handleMessage(char* line, ProtocolTransport transport) {
     JsonDocument document;
     if (deserializeJson(document, line)) return;
-    lastReceiveMs = millis();
+    if (transport == TRANSPORT_BLE) lastBleReceiveMs = millis();
+    else lastSerialReceiveMs = millis();
+    lastReceivedTransport = transport;
     g_ui.bridgeConnected = true;
     const char* type = document["t"];
     if (!type) return;
@@ -147,11 +175,23 @@ void protocolBegin() {
 }
 
 bool protocolConnected() {
-    return lastReceiveMs && millis() - lastReceiveMs < 8000;
+    return recently(lastSerialReceiveMs) || recently(lastBleReceiveMs);
 }
 
+bool protocolUsingBle() {
+    return protocolConnected() && activeTransport() == TRANSPORT_BLE;
+}
+
+bool protocolVoiceSupported() {
+    return protocolConnected() && activeTransport() == TRANSPORT_USB;
+}
+
+const char* protocolTransportName() { return protocolUsingBle() ? "BLE" : "USB"; }
+
 void protocolHello() {
-    Serial.println("{\"v\":1,\"t\":\"hello\",\"device\":\"cardputer\",\"firmware\":\"0.6.0\"}");
+    static const char* hello = "{\"v\":1,\"t\":\"hello\",\"device\":\"cardputer\",\"firmware\":\"0.7.0\",\"transports\":[\"usb\",\"ble\"]}";
+    Serial.println(hello);
+    bleTransportSendLine(hello);
 }
 
 void protocolAction(const char* id, int slot, const char* gesture) {
@@ -161,8 +201,9 @@ void protocolAction(const char* id, int slot, const char* gesture) {
     document["id"] = id;
     if (slot > 0) document["slot"] = slot;
     if (gesture) document["gesture"] = gesture;
-    serializeJson(document, Serial);
-    Serial.println();
+    String line;
+    serializeJson(document, line);
+    sendLine(line.c_str());
 }
 
 void protocolPromptShortcut(char key) {
@@ -172,8 +213,9 @@ void protocolPromptShortcut(char key) {
     document["id"] = "prompt.run";
     char keyText[2] = {key, 0};
     document["key"] = keyText;
-    serializeJson(document, Serial);
-    Serial.println();
+    String line;
+    serializeJson(document, line);
+    sendLine(line.c_str());
 }
 
 void protocolAudioStart(uint32_t rate, const char* delivery) {
@@ -205,12 +247,12 @@ void protocolAudioEnd() {
 void protocolLoop() {
     while (Serial.available()) {
         char value = (char)Serial.read();
-        if (value == '\n' || inputLength >= sizeof(inputBuffer) - 1) {
-            inputBuffer[inputLength] = 0;
-            inputLength = 0;
-            handleMessage(inputBuffer);
+        if (value == '\n' || serialInputLength >= sizeof(serialInputBuffer) - 1) {
+            serialInputBuffer[serialInputLength] = 0;
+            serialInputLength = 0;
+            handleMessage(serialInputBuffer, TRANSPORT_USB);
         } else if (value != '\r') {
-            inputBuffer[inputLength++] = value;
+            serialInputBuffer[serialInputLength++] = value;
         }
     }
     if (g_ui.bridgeConnected && !protocolConnected()) {
@@ -218,5 +260,18 @@ void protocolLoop() {
         g_ui.bridgeConnected = false;
         g_ui.codexConnected = false;
         screenDirty();
+    }
+}
+
+void protocolReceiveBle(const uint8_t* data, size_t length) {
+    for (size_t index = 0; index < length; index++) {
+        const char value = (char)data[index];
+        if (value == '\n' || bleInputLength >= sizeof(bleInputBuffer) - 1) {
+            bleInputBuffer[bleInputLength] = 0;
+            bleInputLength = 0;
+            handleMessage(bleInputBuffer, TRANSPORT_BLE);
+        } else if (value != '\r') {
+            bleInputBuffer[bleInputLength++] = value;
+        }
     }
 }

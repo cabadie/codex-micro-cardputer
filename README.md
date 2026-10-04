@@ -4,8 +4,8 @@
 
 An open-source M5Stack Cardputer implementation inspired by the OpenAI x Work
 Louder Codex Micro experience for the Codex desktop app on macOS. It uses the
-Cardputer's screen, keyboard, microphone, speaker, battery, USB HID, and USB
-serial connection.
+Cardputer's screen, keyboard, microphone, speaker, battery, USB, and Bluetooth
+Low Energy capabilities.
 
 This is an independent community project. It is not affiliated with, endorsed
 by, or supported by OpenAI, Work Louder, or M5Stack. “Codex,” “Codex Micro,”
@@ -46,6 +46,11 @@ and related marks belong to their respective owners.
   steer, or remain as editable drafts, and may explicitly invoke installed
   skills with `$skill-name`.
 - Without the bridge, the Typing layer remains a normal USB keyboard.
+- USB and Bluetooth Low Energy are automatic transports. With the cable
+  connected, USB has priority; on battery, the deck, actions, shortcuts,
+  battery level, and keyboard continue over the local BLE bridge link.
+- The top bar says `USB` or `BLE`, and `/status` reports the active transport.
+  Voice recording is intentionally USB-only in this first wireless release.
 - Approve and Decline only press one exact, visible, enabled Codex request
   button. Ambiguous or absent UI fails closed.
 
@@ -109,6 +114,7 @@ combinations pass through normally instead of firing macros.
 
 - macOS with the Codex desktop app installed
 - M5Stack Cardputer and a data-capable USB-C cable
+- Bluetooth enabled on the Mac for battery-mode use
 - Node.js 22 or newer
 - Xcode Command Line Tools (`xcode-select --install`)
 - Python 3 and PlatformIO Core for firmware builds
@@ -135,6 +141,12 @@ modifying it, and serves the local console and diagnostics at:
 - [http://127.0.0.1:8378/](http://127.0.0.1:8378/)
 - [http://127.0.0.1:8378/status](http://127.0.0.1:8378/status)
 
+The native helper also scans for a nearby `Codex Cardputer`. The first BLE
+connection may show a macOS Bluetooth privacy prompt; allow it. No manual
+System Settings pairing is required. After the firmware has been flashed once
+over USB, unplugging the cable automatically moves the bridge and keyboard to
+BLE. Reconnecting USB automatically moves them back.
+
 For daily use, stop the foreground bridge and install the included macOS user
 service. The installer resolves the repository and Node paths automatically,
 installs dependencies, builds the Swift helpers, runs the tests, and starts the
@@ -158,6 +170,9 @@ for app integration. In **System Settings > Privacy & Security**:
 2. Under **Screen & System Audio Recording**, add
    `bridge/bin/codex-visible-task`. It reads the visible Codex task header when
    recording begins so voice remains pinned to the original task.
+3. Under **Bluetooth**, allow `Codex Cardputer BLE`, the terminal, or Node if
+   macOS asks. Which process is displayed depends on whether the bridge is run
+   in a terminal or as the included login service.
 
 Rebuilding a helper can cause macOS to request permission again because these
 development binaries are not code-signed. If a visible title cannot be matched
@@ -197,8 +212,27 @@ immediately after conversion to a compact 8 kHz WAV for USB playback.
 The official Codex Micro stops recording on release, prepares the prompt, and
 waits for its Codex key before sending. This Cardputer build intentionally uses
 release-to-send: plain Space queues, and Ctrl+Space steers. Voice always focuses
-and submits to the composer in the currently visible Codex window; it never
-opens or retargets a recent-task tile as a side effect of sending.
+and submits to the task that was visible when recording began; it never follows
+a later window switch or retargets a recent-task tile as a side effect.
+
+## Bluetooth battery mode
+
+BLE battery mode is local to the nearby Mac; it is not an internet relay. The
+macOS bridge must still be running and the Cardputer must remain within normal
+Bluetooth range. One custom GATT channel carries deck updates, semantic
+actions, and keyboard reports; the Mac bridge turns the reports into macOS
+keystrokes. This avoids a second system keyboard pairing and keeps USB as the
+direct-HID path. The current proximity link is not application-encrypted, so do
+not use battery mode around untrusted nearby Bluetooth devices with sensitive
+prompt content.
+
+To verify it, first confirm `/status` says `"transport":"usb"` and Bluetooth
+status is `connected`, then unplug the
+Cardputer. Within a few seconds the top bar and `/status` should say `BLE`.
+Typing, task tiles, tile selection, Codex actions, and Custom prompt shortcuts
+should continue. Plug USB back in to restore full voice support. If discovery
+gets stale after flashing, restart the bridge; there is no Bluetooth device to
+forget in System Settings.
 
 ## Build and flash firmware
 
@@ -252,7 +286,7 @@ Still to close for full Micro parity:
   reasoning actions
 - runtime remapping for built-in Codex Micro actions
 - signed, login-starting Mac app packaging and compatibility diagnostics
-- Bluetooth HID/data transport, remembered hosts, and wireless battery state
+- BLE voice/audio transport after latency, bandwidth, and reliability testing
 - broader end-to-end regression coverage across Codex desktop updates
 
 The detailed product contract and remaining milestones are in

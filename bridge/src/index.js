@@ -9,6 +9,7 @@ const { CodexEventTracker } = require('./codex-events');
 const { CodexStore } = require('./codex-store');
 const { CardputerDevice } = require('./device');
 const { SpeakerFeedback } = require('./feedback');
+const { decodeHidReport } = require('./hid-report');
 const macos = require('./macos');
 const {
   AVAILABLE_KEY_ROWS,
@@ -17,6 +18,7 @@ const {
 } = require('./prompt-shortcuts');
 const { normalizeTileLabel } = require('./tile-labels');
 const { MacSpeechSynthesizer } = require('./speech');
+const { pastePromptShortcut } = require('./shortcut-delivery');
 const { tilesPage } = require('./tiles-ui');
 const { VoiceSession } = require('./voice');
 const { pinVoiceTarget } = require('./voice-target');
@@ -95,14 +97,16 @@ async function runPromptShortcut(keyValue) {
   const key = normalizeKey(keyValue);
   const shortcut = deckState.promptShortcuts.find((item) => item.key === key);
   if (!shortcut) throw new Error(`No prompt is assigned to ${key}`);
+  const startedAt = Date.now();
+  const lineCount = shortcut.prompt.split(/\r?\n/).length;
+  log(`prompt shortcut started: ${key} (${shortcut.label}, ${shortcut.delivery}, ${lineCount} lines)`);
 
   await macos.activateCodex();
   await new Promise((resolve) => setTimeout(resolve, 180));
   await actions.pressShortcut('u', ['control']);
   await new Promise((resolve) => setTimeout(resolve, 120));
-  await actions.typeText(shortcut.prompt);
-  if (shortcut.delivery === 'queue') await actions.pressKey('enter');
-  else if (shortcut.delivery === 'steer') await actions.pressKey('enter', ['command']);
+  await pastePromptShortcut(shortcut, actions, macos);
+  log(`prompt shortcut delivered: ${key} (${shortcut.label}, ${shortcut.delivery})`);
   if (shortcut.delivery === 'steer') {
     await feedback.speak('Steered', { toast: `${shortcut.label}: steered`, cue: 'steer' });
   } else if (shortcut.delivery === 'draft') {
@@ -110,6 +114,7 @@ async function runPromptShortcut(keyValue) {
   } else {
     await feedback.speak('Sent', { toast: `${shortcut.label}: sent` });
   }
+  log(`prompt shortcut completed: ${key} (${shortcut.label}) in ${Date.now() - startedAt}ms`);
   return shortcut;
 }
 
@@ -381,11 +386,23 @@ async function sendTranscript(delivery = voiceDelivery, targetThreadId = voiceTa
 async function handleMessage(message) {
   if (!message || typeof message !== 'object') return;
 
+  if (message.t === 'hid.report') {
+    const report = decodeHidReport(message);
+    if (!report) return;
+    try {
+      if (report.named) await macos.pressKey(report.key, report.modifiers);
+      else await macos.pressShortcut(report.key, report.modifiers);
+    } catch (error) {
+      log(`BLE keyboard report failed: ${error.message}`);
+    }
+    return;
+  }
+
   if (message.t === 'hello') {
     device.send({
       t: 'hello',
       protocol: 1,
-      bridge: '0.6.0',
+      bridge: '0.7.0',
       capabilities: [
         'chats',
         'actions',
@@ -408,6 +425,7 @@ async function handleMessage(message) {
     return;
   }
   if (message.t === 'audio.start') {
+    feedback.cancel();
     voice.start(Number(message.rate || 16000));
     voiceDelivery = message.delivery === 'steer' ? 'steer' : 'queue';
     voiceTargetThreadId = null;
@@ -477,8 +495,18 @@ async function handleMessage(message) {
 device.on('message', (message) => handleMessage(message));
 device.on('connected', () => {
   feedback.syncSettings();
-  device.send({ t: 'connection', bridge: true, codex: true });
+  device.send({ t: 'connection', bridge: true, codex: true, transport: device.transport });
+  // A bridge restart abandons any in-flight recording. Explicitly clear a
+  // previous error/preview so the Cardputer never remains stuck on stale voice
+  // state after the underlying problem has been fixed.
+  device.send({ t: 'voice.state', state: 'idle' });
   device.send({ t: 'cue', id: 'connected' });
+  refreshSlots(true);
+  syncPromptShortcuts();
+});
+device.on('transport', (transport, previous) => {
+  if (!previous || !transport) return;
+  device.send({ t: 'connection', bridge: true, codex: true, transport });
   refreshSlots(true);
   syncPromptShortcuts();
 });
@@ -498,6 +526,8 @@ const server = http.createServer(async (request, response) => {
       writeJson(response, 200, {
         ok: true,
         device: device.connected,
+        transport: device.transport,
+        bluetooth: { status: device.bleStatus, connected: device.bleConnected },
         agentSource: config.agentSource,
         selectedThreadId,
         taskAliasCount: Object.keys(deckState.taskAliases).length,

@@ -1,13 +1,21 @@
 # Cardputer bridge protocol v1
 
-Firmware and bridge exchange newline-delimited JSON over the Cardputer USB CDC
-serial port at 115200 baud. Every message contains `v: 1` and a `t` type.
-Unknown types and fields are ignored so both sides can grow independently.
+Firmware and bridge exchange newline-delimited JSON over either the Cardputer
+USB CDC serial port at 115200 baud or a local BLE GATT channel. USB has
+priority while connected; BLE takes over automatically when USB disappears.
+Every message contains `v: 1` and a `t` type. Unknown types and fields are
+ignored so both sides can grow independently.
+
+BLE advertises service `9f9c7001-7d2a-4c3f-a7e2-9b1c6d5e4f30`. The Mac writes
+to `...7002...` and subscribes to notifications from `...7003...`. Keyboard
+reports share this channel and are emitted as macOS keystrokes by the local
+bridge. The BLE service is connection-ready without system pairing; it is a
+proximity transport, not an internet relay.
 
 ## Device to Mac
 
 ```json
-{"v":1,"t":"hello","device":"cardputer","firmware":"0.6.0"}
+{"v":1,"t":"hello","device":"cardputer","firmware":"0.7.0","transports":["usb","ble"]}
 {"v":1,"t":"action","id":"chat.open","slot":3,"gesture":"single"}
 {"v":1,"t":"action","id":"request.approve"}
 {"v":1,"t":"action","id":"answer.read","slot":3}
@@ -15,6 +23,7 @@ Unknown types and fields are ignored so both sides can grow independently.
 {"v":1,"t":"audio.start","rate":16000,"delivery":"steer"}
 {"v":1,"t":"audio","data":"BASE64_PCM_S16LE_MONO"}
 {"v":1,"t":"audio.end"}
+{"v":1,"t":"hid.report","modifiers":8,"keys":[40,0,0,0,0,0]}
 ```
 
 Actions are semantic. App-specific shortcuts and UI safety checks belong in
@@ -23,8 +32,8 @@ the Mac bridge, not the firmware.
 ## Mac to device
 
 ```json
-{"v":1,"t":"hello","protocol":1,"bridge":"0.6.0","capabilities":["chats","actions","model-metadata","rolling-recent","task-aliases","active-window","voice.offline","voice.release-submit","safe-approvals","prompt-shortcuts","sound.settings","speech.playback","answer.summary"]}
-{"v":1,"t":"connection","bridge":true,"codex":true}
+{"v":1,"t":"hello","protocol":1,"bridge":"0.7.0","capabilities":["chats","actions","model-metadata","rolling-recent","task-aliases","active-window","voice.offline","voice.release-submit","safe-approvals","prompt-shortcuts","sound.settings","speech.playback","answer.summary"]}
+{"v":1,"t":"connection","bridge":true,"codex":true,"transport":"ble"}
 {"v":1,"t":"chat","slot":3,"title":"USB fix","model":"gpt-5.6-sol","reasoning":"high","state":"thinking","selected":true}
 {"v":1,"t":"prompt.shortcuts","shortcuts":[{"key":"d","label":"DEPLOY"},{"key":"b","label":"BUILD"}]}
 {"v":1,"t":"voice.state","state":"processing"}
@@ -54,8 +63,10 @@ window, focuses its composer, and then asks the Cardputer HID endpoint to type
 and submit the text. It does not open or retarget a recent-task tile.
 
 The device declares the bridge offline after eight seconds without a received
-message. The bridge pings every three seconds and reconnects to USB serial every
-two seconds.
+message. The bridge pings every three seconds, retries USB serial every two
+seconds, and keeps its native CoreBluetooth helper scanning/reconnecting. Audio
+messages remain USB-only in v0.7; the firmware rejects voice capture while BLE
+is the active transport instead of risking a partial or delayed submission.
 
 ## Safety rules
 

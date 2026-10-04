@@ -65,3 +65,25 @@ test('tones mode skips speech synthesis', async () => {
   assert.equal(synthesized, false);
   assert.equal(messages.some((message) => message.t === 'cue'), true);
 });
+
+test('starting voice cancels Cardputer speech that is still synthesizing', async () => {
+  const messages = [];
+  let finishSynthesis;
+  const synthesis = new Promise((resolve) => { finishSynthesis = resolve; });
+  const feedback = new SpeakerFeedback(
+    { send: (message) => { messages.push(message); return true; } },
+    {
+      updateSettings: () => {},
+      synthesize: async () => synthesis,
+    },
+    () => ({ mode: 'hybrid', speechOutput: 'cardputer', volume: 45 })
+  );
+
+  const speaking = feedback.speak('Sent');
+  await new Promise((resolve) => setImmediate(resolve));
+  feedback.cancel();
+  finishSynthesis(fakeWav());
+
+  assert.equal(await speaking, true);
+  assert.equal(messages.some((message) => message.t === 'speech.begin'), false);
+});

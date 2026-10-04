@@ -74,6 +74,10 @@ function loadConfig(configPath = path.join(PROJECT_ROOT, 'config.json')) {
       whisperCommand: null,
       whisperModel: path.join(PROJECT_ROOT, 'tools', 'models', 'ggml-small.bin'),
     },
+    bluetooth: {
+      enabled: true,
+      helper: path.join(PROJECT_ROOT, 'bin', 'codex-ble'),
+    },
     sound: SOUND_DEFAULTS,
     actionShortcuts: {
       'chat.continue': null,
@@ -89,6 +93,8 @@ function loadConfig(configPath = path.join(PROJECT_ROOT, 'config.json')) {
     if (!loaded[key]) loaded[key] = defaults[key];
   }
   if (!loaded.voice.whisperModel) loaded.voice.whisperModel = defaults.voice.whisperModel;
+  if (!loaded.bluetooth || typeof loaded.bluetooth !== 'object') loaded.bluetooth = { ...defaults.bluetooth };
+  if (!loaded.bluetooth.helper) loaded.bluetooth.helper = defaults.bluetooth.helper;
   loaded.sound = normalizeSoundSettings(loaded.sound, defaults.sound);
   if (loaded.agentSource === 'stable') loaded.agentSource = 'rolling';
   if (!['rolling', 'recent', 'custom'].includes(loaded.agentSource)) {

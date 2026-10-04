@@ -1,6 +1,6 @@
 {
   "name": "codex-micro-cardputer-bridge",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "description": "macOS bridge between Codex Desktop and Codex Micro for Cardputer",
   "license": "MIT",
@@ -13,7 +13,7 @@
     "start": "node --disable-warning=ExperimentalWarning src/index.js",
     "test": "node --test",
     "build:ax": "mkdir -p bin && swiftc macos/CodexAX.swift -o bin/codex-ax",
-    "build:helpers": "mkdir -p bin && swiftc macos/CodexAX.swift -o bin/codex-ax && swiftc -parse-as-library macos/CodexVisibleTask.swift -o bin/codex-visible-task && swiftc macos/ClipboardWindow.swift -o bin/clipboard-window"
+    "build:helpers": "mkdir -p bin && swiftc macos/CodexAX.swift -o bin/codex-ax && swiftc -parse-as-library macos/CodexVisibleTask.swift -o bin/codex-visible-task && swiftc macos/ClipboardWindow.swift -o bin/clipboard-window && swiftc macos/CodexBLE.swift -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker macos/CodexBLE-Info.plist -o bin/codex-ble"
   },
   "engines": {
     "node": ">=22"

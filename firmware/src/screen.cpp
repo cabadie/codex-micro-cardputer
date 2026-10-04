@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "app_types.h"
+#include "protocol.h"
 
 static M5Canvas canvas(&M5Cardputer.Display);
 static bool dirty = true;
@@ -64,6 +65,11 @@ static void drawTopBar() {
     } else {
         canvas.setTextColor(0x8410, 0x2104);
         canvas.print("KEYBOARD");
+    }
+    if (g_ui.bridgeConnected) {
+        canvas.setCursor(181, 4);
+        canvas.setTextColor(0x841F, 0x2104);
+        canvas.print(protocolTransportName());
     }
     if (g_ui.battery >= 0) {
         canvas.setCursor(211, 4);

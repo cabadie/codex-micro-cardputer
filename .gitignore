@@ -1,6 +1,7 @@
 .DS_Store
 .venv/
 bridge/bin/
+bridge/.swift-module-cache/
 bridge/config.json
 bridge/tools/models/*.bin
 bridge/node_modules/

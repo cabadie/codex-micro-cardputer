@@ -24,6 +24,8 @@ test('console exposes the rolling deck, task aliases, and prompt-shortcut contro
   assert.match(html, /Speaker feedback/);
   assert.match(html, /press <strong>S<\/strong>/);
   assert.match(html, /id="sound-mode"/);
+  assert.match(html, /<details id="task-names" class="naming-section">/);
+  assert.match(html, /id="alias-summary"/);
   assert.match(html, /Read latest answer/);
   assert.doesNotMatch(html, /<select[^>]+thread/);
   assert.match(html, /\$skill-name/);
